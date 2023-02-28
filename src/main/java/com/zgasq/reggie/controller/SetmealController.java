@@ -13,6 +13,8 @@ import com.zgasq.reggie.service.SetmealDishService;
 import com.zgasq.reggie.service.SetmealService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -29,7 +31,8 @@ public class SetmealController {
     @Autowired
     private CategoryService categoryService;
     @PostMapping
-    public R<String> add(@RequestBody SetmealDto dto){
+    @CacheEvict(value = "setmealCache",allEntries = true)
+    public R<String> save(@RequestBody SetmealDto dto){
         setmealService.saveWithDish(dto);
         return R.success("添加套餐成功");
     }
@@ -60,12 +63,14 @@ public class SetmealController {
     }
 
     @DeleteMapping
+    @CacheEvict(value = "setmealCache",allEntries = true)
     public R<String> delete(@RequestParam List<Long> ids){
         setmealService.removeWithDish(ids);
         return R.success("套餐删除成功");
     }
 
     @GetMapping("/list")
+    @Cacheable(value = "setmealCache" ,key = "#setmeal.categoryId+'_'+#setmeal.status")
     public R<List<Setmeal>> list(Setmeal setmeal){
         LambdaQueryWrapper<Setmeal> setmealLambdaQueryWrapper =new LambdaQueryWrapper<>();
         setmealLambdaQueryWrapper.eq(setmeal.getCategoryId()!=null,Setmeal::getCategoryId,setmeal.getCategoryId());

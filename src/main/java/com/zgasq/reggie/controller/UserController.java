@@ -9,6 +9,7 @@ import com.zgasq.reggie.utils.ValidateCodeUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import javax.servlet.http.HttpSession;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/user")
@@ -24,6 +26,9 @@ public class UserController {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private RedisTemplate redisTemplate;
+
     @PostMapping("/sendMsg")
     public R<String> sendMsg(@RequestBody User user, HttpSession session){
         String phone = user.getPhone();
@@ -31,6 +36,7 @@ public class UserController {
             String s = ValidateCodeUtils.generateValidateCode(6).toString();
             log.info("code= {}",s);
             session.setAttribute(phone,s);
+            redisTemplate.opsForValue().set(phone,s,5, TimeUnit.MINUTES);
             return R.success("短信验证码发送成功");
 
         }
@@ -38,10 +44,13 @@ public class UserController {
     }
     @PostMapping("/login")
     public R<User> login(@RequestBody Map map, HttpSession session){
+
         if(map.size()>0){
             String phone =map.get("phone").toString();
             String code =map.get("code").toString();
-            Object attribute = session.getAttribute(phone);
+            //Object attribute = session.getAttribute(phone);
+            Object attribute = redisTemplate.opsForValue().get(phone);
+
             if(attribute!=null &&attribute.equals(code)){
                 LambdaQueryWrapper<User> userLambdaQueryWrapper =new LambdaQueryWrapper<>();
                 userLambdaQueryWrapper.eq(User::getPhone,phone);
@@ -52,10 +61,11 @@ public class UserController {
                     userService.save(user);
                 }
                 session.setAttribute("user",user.getId());
+                redisTemplate.delete(phone);
                 return R.success(user);
             }
         }
-        return R.error("验证码错误");
+        return R.error( "验证码错误");
     }
 
 }

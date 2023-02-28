@@ -13,9 +13,12 @@ import com.zgasq.reggie.service.DishService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @RestController
@@ -27,6 +30,8 @@ public class DishController {
     private DishFlavorService dishFlavorService;
     @Autowired
     private CategoryService categoryService;
+    @Autowired
+    private RedisTemplate redisTemplate;
     @PostMapping
     public R<String> save(@RequestBody DishDto dishDto){
         dishService.saveWithFlavor(dishDto);
@@ -67,18 +72,25 @@ public class DishController {
     @PutMapping
     public R<String> update(@RequestBody DishDto dishDto){
        dishService.updateWithFlavor(dishDto);
-       return R.success("修改菜品成功");
+        String keys = "dish_"+dishDto.getCategoryId()+"_1";
+        redisTemplate.delete(keys);
+        return R.success("修改菜品成功");
     }
 
     @GetMapping("/list")
     public R<List<DishDto>> list(Dish dish){
-
+        List<DishDto> listDto =null;
+        String key ="dish_"+dish.getCategoryId()+"_" +dish.getStatus();
+        listDto= (List<DishDto>) redisTemplate.opsForValue().get(key);
+        if(listDto!=null){
+            return R.success(listDto);
+        }
         LambdaQueryWrapper<Dish> lambdaQueryWrapper =new LambdaQueryWrapper<>();
         lambdaQueryWrapper.eq(dish.getCategoryId()!=null,Dish::getCategoryId,dish.getCategoryId());
         lambdaQueryWrapper.eq(Dish::getStatus,1);
         lambdaQueryWrapper.orderByAsc(Dish::getSort).orderByDesc(Dish::getUpdateTime);
         List<Dish> list = dishService.list(lambdaQueryWrapper);
-        List<DishDto> listDto =
+        listDto =
         list.stream().map((item)->{
             DishDto dishDto = new DishDto();
             BeanUtils.copyProperties(item, dishDto);
@@ -95,6 +107,8 @@ public class DishController {
             dishDto.setFlavors(list1);
             return dishDto;
         }).collect(Collectors.toList());
+
+        redisTemplate.opsForValue().set(key,listDto,1, TimeUnit.HOURS);
         return R.success(listDto);
     }
 
